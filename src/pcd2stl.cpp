@@ -52,6 +52,22 @@ void A_Shape_Reconstruction(std::string& path_read_pcd, std::string& path_save_p
 /// @brief PLY转STL
 void PLY2STL(std::string& path_read_ply, std::string& path_save_stl);
 void visualizeSTL(const std::string& stl_file_path);
+double computeAlphaBasedOnDensity(pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud, pcl::search::KdTree<pcl::PointXYZ>& tree);
+
+int main()
+{
+    std::string path_read_pcd = "../lidar/pcd/RMUC_dense_cut_fan.pcd";
+    std::string path_save_ply = "../lidar/mesh/RMUC_dense_cut_fan.ply";
+    std::string path_save_pcd = "../lidar/mesh/RMUC_dense_cut_fan.pcd";
+    std::string path_save_obj = "../lidar/mesh/RMUC_dense_cut_fan.obj";
+    std::string path_save_stl = "../lidar/mesh/RMUC_dense_cut_fan.stl";
+
+    // Three_D_Reconstruction(path_read_pcd, path_save_ply); //效果一坨
+    A_Shape_Reconstruction(path_read_pcd, path_save_ply, path_save_pcd, path_save_obj);
+    PLY2STL(path_save_ply, path_save_stl);
+
+    return 0;
+}
 
 
 void Three_D_Reconstruction(std::string& path_read_pcd, std::string& path_save_ply)
@@ -133,6 +149,28 @@ void Three_D_Reconstruction(std::string& path_read_pcd, std::string& path_save_p
  
 }
 
+double computeAlphaBasedOnDensity(pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud, pcl::search::KdTree<pcl::PointXYZ>& tree) {
+    // 计算点云的平均密度
+    double total_density = 0.0;
+    int point_count = cloud->points.size();
+    for (size_t i = 0; i < point_count; ++i) {
+        std::vector<int> neighbors;
+        std::vector<float> distances;
+        tree.radiusSearch(i, 0.1, neighbors, distances); // 以0.1为半径搜索邻居
+        total_density += neighbors.size();
+    }
+    double average_density = total_density / point_count;
+
+    // 根据平均密度计算alpha值
+    double alpha = std::max(0.01, 1.0 / average_density); // 防止alpha为负值或过大
+    if (alpha < 0.06)
+    {
+        alpha = 0.06;
+    }
+
+    return alpha;
+}
+
 void A_Shape_Reconstruction(std::string& path_read_pcd, std::string& path_save_ply, std::string& path_save_pcd, std::string& path_save_obj)
 {
     printf("A-shape Reconstruction\n");
@@ -149,10 +187,15 @@ void A_Shape_Reconstruction(std::string& path_read_pcd, std::string& path_save_p
         return;
     }
 
+    pcl::search::KdTree<pcl::PointXYZ> tree;
+    tree.setInputCloud(cloud);
+    
     pcl::PointCloud<pcl::PointXYZ>::Ptr surface_hull(new pcl::PointCloud<pcl::PointXYZ>);
     pcl::ConcaveHull<pcl::PointXYZ> cavehull;
     cavehull.setInputCloud(cloud);
-    cavehull.setAlpha(0.1); // 调整此参数以生成有效的凹包
+    float alpha = computeAlphaBasedOnDensity(cloud, tree); // 自定义计算函数
+    std::cout<<"alpha: "<<alpha<<std::endl;
+    cavehull.setAlpha(alpha); // 调整此参数以生成有效的凹包
     std::vector<pcl::Vertices> polygons;
     cavehull.reconstruct(*surface_hull, polygons);
 
@@ -265,21 +308,7 @@ void PLY2STL(std::string& path_read_ply, std::string& path_save_stl)
         return;
     }
 
-	visualizeSTL(path_save_stl);
+	// visualizeSTL(path_save_stl);
 }
 
 
-int main()
-{
-    std::string path_read_pcd = "../lidar/pcd/RMUC2.pcd";
-    std::string path_save_ply = "../lidar/mesh/RMUC2.ply";
-    std::string path_save_pcd = "../lidar/mesh/RMUC2_alpha.pcd";
-    std::string path_save_obj = "../lidar/mesh/RMUC2.obj";
-    std::string path_save_stl = "../lidar/mesh/RMUC2.stl";
-
-    // Three_D_Reconstruction(path_read_pcd, path_save_ply); //效果一坨
-    A_Shape_Reconstruction(path_read_pcd, path_save_ply, path_save_pcd, path_save_obj);
-    PLY2STL(path_save_ply, path_save_stl);
-
-    return 0;
-}
